@@ -674,22 +674,22 @@ bool print_file_info(const extract_options & o, const setup::info & info) {
 		}
 	}
 
-	if (o.list_components) {
-		if (multiple_sections) {
+	if(o.list_components) {
+		if(multiple_sections) {
 			std::cout << "Components:\n";
 		}
 		for(const setup::component_entry & component : info.components) {
 			std::cout << " - " << color::green << component.name << color::reset;
-			if (!component.description.empty()) {
+			if(!component.description.empty()) {
 				std::cout << ": " << color::white << component.description << color::reset;
 			}
 			std::cout << '\n';
 		}
-		if (info.components.empty()) {
+		if(info.components.empty()) {
 			std::cout << " (none)\n";
 		}
 
-		if ((o.silent || !o.quiet) && multiple_sections) {
+		if((o.silent || !o.quiet) && multiple_sections) {
 			std::cout << '\n';
 		}
 	}
@@ -839,8 +839,8 @@ processed_entries filter_entries(const extract_options & o, const setup::info & 
 			continue; // Ignore language-agnostic files
 		}
 
-		if (!file.components.empty()) {
-			if (!o.component.empty() && !setup::expression_match(o.component, file.components)) {
+		if(!file.components.empty()) {
+			if(!o.component.empty() && !setup::expression_match(o.component, file.components)) {
 				continue;
 			}
 		}
