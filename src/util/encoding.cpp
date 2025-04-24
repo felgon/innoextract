@@ -56,6 +56,7 @@
 #include <iterator>
 #include <sstream>
 #include <vector>
+#include <unordered_map>
 
 #include "configure.hpp"
 
