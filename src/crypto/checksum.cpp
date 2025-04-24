@@ -88,13 +88,13 @@ std::ostream & operator<<(std::ostream & os, const crypto::checksum & checksum) 
 			break;
 		}
 		case crypto::SHA256: {
-			for(size_t i = 0; i < size_t(boost::size(checksum.sha1)); i++) {
+			for(size_t i = 0; i < size_t(std::size(checksum.sha1)); i++) {
 				os << std::setfill('0') << std::hex << std::setw(2) << int(boost::uint8_t(checksum.sha1[i]));
 			}
 			break;
 		}
 		case crypto::PBKDF2_SHA256_XChaCha20: {
-			for(size_t i = 0; i < size_t(boost::size(checksum.check)); i++) {
+			for(size_t i = 0; i < size_t(std::size(checksum.check)); i++) {
 				os << std::setfill('0') << std::hex << std::setw(2) << int(boost::uint8_t(checksum.check[i]));
 			}
 			break;
