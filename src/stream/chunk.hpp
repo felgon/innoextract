@@ -65,6 +65,7 @@ enum encryption_method {
 	Plaintext,
 	ARC4_MD5,
 	ARC4_SHA1,
+	XChaCha20,
 };
 
 /*!

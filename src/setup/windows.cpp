@@ -102,6 +102,10 @@ windows_version_name windows_nt_version_names[] = {
 
 const char * get_version_name(const windows_version::data & version, bool nt = false) {
 	
+	if(nt && version.major == 10 && version.minor == 0 && version.build >= 22000) {
+		return "Windows 11";
+	}
+	
 	windows_version_name * names;
 	size_t count;
 	if(nt) {
@@ -117,6 +121,7 @@ const char * get_version_name(const windows_version::data & version, bool nt = f
 		}
 		return v.name;
 	};
+	
 	return NULL;
 }
 
