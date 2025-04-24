@@ -1409,7 +1409,7 @@ void process_file(const fs::path & installer, const extract_options & o) {
 					}
 				}
 				
-				BOOST_FOREACH(file_output_location & other, outputs) {
+				for(file_output_location & other : outputs) {
 					if(other.first == output) {
 						other.first = NULL;
 					}
