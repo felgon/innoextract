@@ -28,7 +28,6 @@
 #include <boost/cstdint.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem/operations.hpp>
-#include <boost/range/size.hpp>
 
 #include <boost/version.hpp>
 #if BOOST_VERSION >= 107200
@@ -110,7 +109,7 @@ bool slice_reader::open_file(const path_type & file) {
 		throw slice_error("could not read slice magic number in \"" + file.string() + "\"");
 	}
 	bool found = false;
-	for(size_t i = 0; boost::size(slice_ids); i++) {
+	for(size_t i = 0; std::size(slice_ids); i++) {
 		if(!std::memcmp(magic, slice_ids[i], 8)) {
 			found = true;
 			break;
