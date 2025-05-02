@@ -27,12 +27,14 @@ jobs:
       - name: 'Build'
         run: '''cmake'' ''--build'' ''${{ github.workspace }}/build'''
       - name: 'Install'
-        run: '''cmake'' ''--install'' ''${{ github.workspace }}/build'' ''--prefix'' ''${{ github.workspace }}/install'' ''--strip'''
+        run: '''cmake'' ''--install'' ''${{ github.workspace }}/build'' ''--prefix'' ''${{ github.workspace }}/install/innoextract'' ''--strip'''
+      - name: 'Archive'
+        run: '''tar'' ''-czvf'' ''${{ github.workspace }}/install/innoextract-linux-x64.tar.gz'' ''-C'' ''${{ github.workspace }}/install'' ''innoextract'''
       - name: 'Save build artifacts'
         uses: 'actions/upload-artifact@v4'
         with:
           name: 'innoextract-linux-x64'
-          path: '${{ github.workspace }}/install'
+          path: '${{ github.workspace }}/install/innoextract-linux-x64.tar.gz'
           compression-level: 9
           overwrite: true
 
@@ -55,12 +57,14 @@ jobs:
       - name: 'Build'
         run: '''cmake'' ''--build'' ''${{ github.workspace }}/build'''
       - name: 'Install'
-        run: '''cmake'' ''--install'' ''${{ github.workspace }}/build'' ''--prefix'' ''${{ github.workspace }}/install'' ''--strip'''
+        run: '''cmake'' ''--install'' ''${{ github.workspace }}/build'' ''--prefix'' ''${{ github.workspace }}/install/innoextract'' ''--strip'''
+      - name: 'Archive'
+        run: '''tar'' ''-czvf'' ''${{ github.workspace }}/install/innoextract-macos-arm64.tar.gz'' ''-C'' ''${{ github.workspace }}/install'' ''innoextract'''
       - name: 'Save build artifacts'
         uses: 'actions/upload-artifact@v4'
         with:
           name: 'innoextract-macos-arm64'
-          path: '${{ github.workspace }}/install'
+          path: '${{ github.workspace }}/install/innoextract-macos-arm64.tar.gz'
           compression-level: 9
           overwrite: true
 
@@ -86,7 +90,7 @@ jobs:
       - name: 'Build'
         run: 'set "Path=%UCRT64DIR%\bin;%Path%;%UCRT64DIR%\lib;%UCRT64DIR%\include" && cmake --build "${{ github.workspace }}\build"'
       - name: 'Install'
-        run: 'set "Path=%UCRT64DIR%\bin;%Path%;%UCRT64DIR%\lib;%UCRT64DIR%\include" && cmake --install "${{ github.workspace }}\build" --prefix "${{ github.workspace }}\install" --strip'
+        run: 'set "Path=%UCRT64DIR%\bin;%Path%;%UCRT64DIR%\lib;%UCRT64DIR%\include" && cmake --install "${{ github.workspace }}\build" --prefix "${{ github.workspace }}\install\innoextract" --strip'
       - name: 'Copy required DLLs'
         shell: 'python'
         run: |
@@ -98,16 +102,72 @@ jobs:
           os_windir: str = environ["WINDIR"]
           workspace_path: Path = Path(r"${{ github.workspace }}").resolve(strict=True)
           msystem_path: Path = workspace_path.joinpath("..", "..", "_temp", "msys64").resolve()
-          install_path: Path = workspace_path.joinpath("install", "bin")
+          install_path: Path = workspace_path.joinpath("install", "innoextract", "bin")
           environ["PATH"] = ";".join(tuple(path for path in os_paths if path.startswith(os_windir)) + tuple(path for path in os_paths if not path.startswith(os_windir)))
           for line in run((msystem_path.joinpath("usr", "bin", "ldd.exe"), install_path.joinpath("innoextract.exe")), capture_output=True, text=True).stdout.splitlines():
               words: list[str] = line.split()
               if not words[2].lower().startswith("/c/windows"):
                   copy2(msystem_path.joinpath("ucrt64", "bin", words[0]), install_path.joinpath(words[0]))
+      - name: 'Archive'
+        run: '7z a -mx9 -mtm- "${{ github.workspace }}\install\innoextract-win-x64.zip" "${{ github.workspace }}\install\innoextract"'
       - name: 'Save build artifacts'
         uses: 'actions/upload-artifact@v4'
         with:
           name: 'innoextract-win-x64'
-          path: '${{ github.workspace }}\install'
+          path: '${{ github.workspace }}\install\innoextract-win-x64.zip'
           compression-level: 9
           overwrite: true
+
+  release:
+    name: 'Publish Release'
+    needs:
+      - 'build-linux'
+      - 'build-macos'
+      - 'build-windows'
+    runs-on: 'ubuntu-latest'
+    if: '${{ (github.event_name == ''push'') && (github.ref_name == ''master'') }}'
+    steps:
+      - name: 'Load build artifacts'
+        uses: 'actions/download-artifact@v4'
+        with:
+          merge-multiple: true
+      - name: 'Generate version number'
+        id: 'generate-version-number'
+        shell: 'python'
+        run: |
+          from datetime import datetime
+          from os import environ
+          with open(environ["GITHUB_OUTPUT"], mode="a") as f:
+              f.write(f"version-number={datetime.fromisoformat('${{ github.event.head_commit.timestamp }}'):%Y%m%d}.${{ github.run_id }}.{${{ github.run_attempt }} - 1}\n")
+      - name: 'Append version number to archive names'
+        run: >
+          'mv' '${{ github.workspace }}/innoextract-linux-x64.tar.gz' '${{ github.workspace }}/innoextract-linux-x64-${{ steps.generate-version-number.outputs.version-number }}.tar.gz' &&
+          'mv' '${{ github.workspace }}/innoextract-macos-arm64.tar.gz' '${{ github.workspace }}/innoextract-macos-arm64-${{ steps.generate-version-number.outputs.version-number }}.tar.gz' &&
+          'mv' '${{ github.workspace }}/innoextract-win-x64.zip' '${{ github.workspace }}/innoextract-win-x64-${{ steps.generate-version-number.outputs.version-number }}.zip'
+      - name: 'Generate checksums'
+        run: >
+          'sha256sum' 'innoextract-linux-x64-${{ steps.generate-version-number.outputs.version-number }}.tar.gz' 'innoextract-macos-arm64-${{ steps.generate-version-number.outputs.version-number }}.tar.gz' 'innoextract-win-x64-${{ steps.generate-version-number.outputs.version-number }}.zip' > 'SHA256SUMS' &&
+          'sha512sum' 'innoextract-linux-x64-${{ steps.generate-version-number.outputs.version-number }}.tar.gz' 'innoextract-macos-arm64-${{ steps.generate-version-number.outputs.version-number }}.tar.gz' 'innoextract-win-x64-${{ steps.generate-version-number.outputs.version-number }}.zip' > 'SHA512SUMS'
+      - name: 'Generate release notes'
+        run: |
+          'tee' '${{ github.workspace }}/RELEASE-NOTES.md' <<EOF
+          SHA-256:
+
+          $('sed' 's/^/- /' 'SHA256SUMS')
+
+          SHA-512:
+
+          $('sed' 's/^/- /' 'SHA512SUMS')
+          EOF
+      - name: 'Release'
+        uses: 'softprops/action-gh-release@v2'
+        with:
+          name: 'Innoextract ${{ steps.generate-version-number.outputs.version-number }}'
+          tag_name: '${{ steps.generate-version-number.outputs.version-number }}'
+          body_path: '${{ github.workspace }}/RELEASE-NOTES.md'
+          files: |
+            '${{ github.workspace }}/innoextract-linux-x64-${{ steps.generate-version-number.outputs.version-number }}.tar.gz'
+            '${{ github.workspace }}/innoextract-macos-arm64-${{ steps.generate-version-number.outputs.version-number }}.tar.gz'
+            '${{ github.workspace }}/innoextract-win-x64-${{ steps.generate-version-number.outputs.version-number }}.zip'
+            '${{ github.workspace }}/SHA256SUMS'
+            '${{ github.workspace }}/SHA512SUMS'
