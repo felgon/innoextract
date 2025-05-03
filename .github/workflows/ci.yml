@@ -2,56 +2,172 @@ name: CI
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - 'master'
   pull_request:
-    branches: [ master ]
+    branches:
+      - 'master'
   schedule:
     - cron: '21 11 * * 5'
 
 jobs:
 
-  linux:
-    name: Linux build
-    runs-on: ubuntu-latest
-
+  build-linux:
+    name: 'Build for Linux'
+    runs-on: 'ubuntu-latest'
     steps:
-    - uses: actions/checkout@v4
+      - name: 'Checkout'
+        uses: 'actions/checkout@v4'
+      - name: 'Refresh APT package lists'
+        run: '''sudo'' ''apt-get'' ''update'''
+      - name: 'Install dependencies'
+        run: '''sudo'' ''apt-get'' ''install'' ''build-essential'' ''cmake'' ''libboost-all-dev'' ''liblzma-dev'''
+      - name: 'Configure'
+        run: '''cmake'' ''-B'' ''${{ github.workspace }}/build'' ''-Werror=dev'' ''-D'' ''CONTINUOUS_INTEGRATION=ON'''
+      - name: 'Build'
+        run: '''cmake'' ''--build'' ''${{ github.workspace }}/build'''
+      - name: 'Install'
+        run: '''cmake'' ''--install'' ''${{ github.workspace }}/build'' ''--prefix'' ''${{ github.workspace }}/install/innoextract'' ''--strip'''
+      - name: 'Archive'
+        run: '''tar'' ''-czvf'' ''${{ github.workspace }}/install/innoextract-linux-x64.tar.gz'' ''-C'' ''${{ github.workspace }}/install'' ''innoextract'''
+      - name: 'Save build artifacts'
+        uses: 'actions/upload-artifact@v4'
+        with:
+          name: 'innoextract-linux-x64'
+          path: '${{ github.workspace }}/install/innoextract-linux-x64.tar.gz'
+          compression-level: 9
+          overwrite: true
 
-    - name: Update
-      run: sudo apt-get update
-
-    - name: Dependencies
-      run: sudo apt-get install build-essential cmake libboost-all-dev liblzma-dev
-
-    - name: Configure
-      run: cmake --version && cmake -B ${{github.workspace}}/build -Werror=dev -Werror=deprecated -DCONTINUOUS_INTEGRATION=1
-
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build
-
-    - name: Check Style
-      run: cmake --build ${{github.workspace}}/build --target style
-
-  macos:
-    name: macOS build
-    runs-on: macos-latest
-
+  build-macos:
+    name: 'Build for macOS'
+    runs-on: 'macos-latest'
     steps:
-    - uses: actions/checkout@v4
+      - name: 'Checkout'
+        uses: 'actions/checkout@v4'
+      - name: 'Upgrade Homebrew and refresh its package lists'
+        run: '''brew'' ''update'''
+      - name: 'Install Python'
+        run: '''brew'' ''install'' ''python@3'' || ''brew'' ''link'' ''--overwrite'' ''python@3'''
+      - name: 'Install other dependencies'
+        env:
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
+        run: '''brew'' ''install'' ''boost'' ''xz'''
+      - name: 'Configure'
+        run: '''cmake'' ''-B'' ''${{ github.workspace }}/build'' ''-Werror=dev'' ''-D'' ''CONTINUOUS_INTEGRATION=ON'''
+      - name: 'Build'
+        run: '''cmake'' ''--build'' ''${{ github.workspace }}/build'''
+      - name: 'Install'
+        run: '''cmake'' ''--install'' ''${{ github.workspace }}/build'' ''--prefix'' ''${{ github.workspace }}/install/innoextract'' ''--strip'''
+      - name: 'Archive'
+        run: '''tar'' ''-czvf'' ''${{ github.workspace }}/install/innoextract-macos-arm64.tar.gz'' ''-C'' ''${{ github.workspace }}/install'' ''innoextract'''
+      - name: 'Save build artifacts'
+        uses: 'actions/upload-artifact@v4'
+        with:
+          name: 'innoextract-macos-arm64'
+          path: '${{ github.workspace }}/install/innoextract-macos-arm64.tar.gz'
+          compression-level: 9
+          overwrite: true
 
-    - name: Update
-      run: brew update
+  build-windows:
+    name: 'Build for Windows'
+    runs-on: 'windows-latest'
+    defaults:
+      run:
+        shell: 'cmd'
+    env:
+      UCRT64DIR: '${{ github.workspace }}\..\..\_temp\msys64\ucrt64'
+    steps:
+      - name: 'Checkout'
+        uses: 'actions/checkout@v4'
+      - name: 'Setup MSYS2 and install dependencies'
+        uses: 'msys2/setup-msys2@v2'
+        with:
+          msystem: 'UCRT64'
+          update: true
+          install: 'mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-boost mingw-w64-ucrt-x86_64-xz mingw-w64-ucrt-x86_64-doxygen'
+      - name: 'Configure'
+        run: 'set "Path=%UCRT64DIR%\bin;%Path%;%UCRT64DIR%\lib;%UCRT64DIR%\include" && cmake -B "${{ github.workspace }}\build" -Werror=dev -D "CONTINUOUS_INTEGRATION=ON" -G "MinGW Makefiles"'
+      - name: 'Build'
+        run: 'set "Path=%UCRT64DIR%\bin;%Path%;%UCRT64DIR%\lib;%UCRT64DIR%\include" && cmake --build "${{ github.workspace }}\build"'
+      - name: 'Install'
+        run: 'set "Path=%UCRT64DIR%\bin;%Path%;%UCRT64DIR%\lib;%UCRT64DIR%\include" && cmake --install "${{ github.workspace }}\build" --prefix "${{ github.workspace }}\install\innoextract" --strip'
+      - name: 'Copy required DLLs'
+        shell: 'python'
+        run: |
+          from os import environ
+          from pathlib import Path
+          from shutil import copy2
+          from subprocess import run
+          os_paths: list[str] = environ["PATH"].split(";")
+          os_windir: str = environ["WINDIR"]
+          workspace_path: Path = Path(r"${{ github.workspace }}").resolve(strict=True)
+          msystem_path: Path = workspace_path.joinpath("..", "..", "_temp", "msys64").resolve()
+          install_path: Path = workspace_path.joinpath("install", "innoextract", "bin")
+          environ["PATH"] = ";".join(tuple(path for path in os_paths if path.startswith(os_windir)) + tuple(path for path in os_paths if not path.startswith(os_windir)))
+          for line in run((msystem_path.joinpath("usr", "bin", "ldd.exe"), install_path.joinpath("innoextract.exe")), capture_output=True, text=True).stdout.splitlines():
+              words: list[str] = line.split()
+              if not words[2].lower().startswith("/c/windows"):
+                  copy2(msystem_path.joinpath("ucrt64", "bin", words[0]), install_path.joinpath(words[0]))
+      - name: 'Archive'
+        run: '7z a -mx9 -mtm- "${{ github.workspace }}\install\innoextract-win-x64.zip" "${{ github.workspace }}\install\innoextract"'
+      - name: 'Save build artifacts'
+        uses: 'actions/upload-artifact@v4'
+        with:
+          name: 'innoextract-win-x64'
+          path: '${{ github.workspace }}\install\innoextract-win-x64.zip'
+          compression-level: 9
+          overwrite: true
 
-    - name: Workaround for Python install isssues - https://github.com/actions/runner-images/issues/8838
-      run: brew install python@3 || brew link --overwrite python@3
+  release:
+    name: 'Publish Release'
+    needs:
+      - 'build-linux'
+      - 'build-macos'
+      - 'build-windows'
+    runs-on: 'ubuntu-latest'
+    if: '${{ (github.event_name == ''push'') && (github.ref_name == ''master'') }}'
+    steps:
+      - name: 'Load build artifacts'
+        uses: 'actions/download-artifact@v4'
+        with:
+          merge-multiple: true
+      - name: 'Generate version number'
+        id: 'generate-version-number'
+        shell: 'python'
+        run: |
+          from datetime import datetime, timedelta, timezone
+          from os import environ
+          with open(environ["GITHUB_OUTPUT"], mode="a") as f:
+              f.write(f"version-number={datetime.fromisoformat('${{ github.event.head_commit.timestamp }}').astimezone(timezone(timedelta())):%Y%m%d}.${{ github.run_id }}.{${{ github.run_attempt }} - 1}\n")
+      - name: 'Insert version number into archive names'
+        run: >
+          'mv' '${{ github.workspace }}/innoextract-linux-x64.tar.gz' '${{ github.workspace }}/innoextract-${{ steps.generate-version-number.outputs.version-number }}-linux-x64.tar.gz' &&
+          'mv' '${{ github.workspace }}/innoextract-macos-arm64.tar.gz' '${{ github.workspace }}/innoextract-${{ steps.generate-version-number.outputs.version-number }}-macos-arm64.tar.gz' &&
+          'mv' '${{ github.workspace }}/innoextract-win-x64.zip' '${{ github.workspace }}/innoextract-${{ steps.generate-version-number.outputs.version-number }}-win-x64.zip'
+      - name: 'Generate checksums'
+        run: >
+          'sha256sum' 'innoextract-${{ steps.generate-version-number.outputs.version-number }}-linux-x64.tar.gz' 'innoextract-${{ steps.generate-version-number.outputs.version-number }}-macos-arm64.tar.gz' 'innoextract-${{ steps.generate-version-number.outputs.version-number }}-win-x64.zip' > 'innoextract-${{ steps.generate-version-number.outputs.version-number }}.sha256sums.txt' &&
+          'sha512sum' 'innoextract-${{ steps.generate-version-number.outputs.version-number }}-linux-x64.tar.gz' 'innoextract-${{ steps.generate-version-number.outputs.version-number }}-macos-arm64.tar.gz' 'innoextract-${{ steps.generate-version-number.outputs.version-number }}-win-x64.zip' > 'innoextract-${{ steps.generate-version-number.outputs.version-number }}.sha512sums.txt'
+      - name: 'Generate release notes'
+        run: |
+          'tee' '${{ github.workspace }}/RELEASE-NOTES.md' <<EOF
+          SHA-256:
 
-    - name: Dependencies
-      env:
-        HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
-      run: brew install boost xz
+          $('sed' 's/^/- /' 'innoextract-${{ steps.generate-version-number.outputs.version-number }}.sha256sums.txt')
 
-    - name: Configure
-      run: cmake --version && cmake -B ${{github.workspace}}/build -Werror=dev -Werror=deprecated -DCONTINUOUS_INTEGRATION=1
+          SHA-512:
 
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build
+          $('sed' 's/^/- /' 'innoextract-${{ steps.generate-version-number.outputs.version-number }}.sha512sums.txt')
+          EOF
+      - name: 'Release'
+        uses: 'softprops/action-gh-release@v2'
+        with:
+          tag_name: '${{ steps.generate-version-number.outputs.version-number }}'
+          body_path: '${{ github.workspace }}/RELEASE-NOTES.md'
+          fail_on_unmatched_files: true
+          files: |
+            ${{ github.workspace }}/innoextract-${{ steps.generate-version-number.outputs.version-number }}-linux-x64.tar.gz
+            ${{ github.workspace }}/innoextract-${{ steps.generate-version-number.outputs.version-number }}-macos-arm64.tar.gz
+            ${{ github.workspace }}/innoextract-${{ steps.generate-version-number.outputs.version-number }}-win-x64.zip
+            innoextract-${{ steps.generate-version-number.outputs.version-number }}.sha256sums.txt
+            innoextract-${{ steps.generate-version-number.outputs.version-number }}.sha512sums.txt

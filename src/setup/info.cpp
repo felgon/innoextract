@@ -24,8 +24,6 @@
 #include <istream>
 #include <sstream>
 
-#include <boost/foreach.hpp>
-
 #include "crypto/hasher.hpp"
 #include "crypto/pbkdf2.hpp"
 #include "crypto/sha256.hpp"
@@ -174,7 +172,7 @@ void info::try_load(std::istream & is, entry_types entries, util::codepage_id fo
 		// codepage of the system the installer is run on.
 		// Look at the list of available languages to guess a suitable codepage.
 		codepage = languages[0].codepage;
-		BOOST_FOREACH(const language_entry & language, languages) {
+		for(const language_entry & language : languages) {
 			if(language.codepage == util::cp_windows1252) {
 				codepage = util::cp_windows1252;
 				break;
@@ -183,7 +181,7 @@ void info::try_load(std::istream & is, entry_types entries, util::codepage_id fo
 	}
 	
 	header.decode(codepage);
-	BOOST_FOREACH(language_entry & language, languages) {
+	for(language_entry & language : languages) {
 		language.decode(codepage);
 	}
 	
